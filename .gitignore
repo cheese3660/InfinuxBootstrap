@@ -1,0 +1,6 @@
+.build/
+.tars/
+cross-toolchain/
+dist/
+*.log
+test
