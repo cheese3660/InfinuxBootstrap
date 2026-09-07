@@ -16,24 +16,31 @@ set -euo pipefail
 
 # Download https://github.com/kraj/musl/archive/refs/tags/v{ver}.tar.gz to ./src-tar/musl-{ver}.tar.gz
 MUSL_VERSION="1.2.6"
+MUSL_SIGNATURE="e9db8b70b0cba3db43b27e84ccd8a0c0958b40029a1c36c9f13817b93787b4d6"
 
 # Download https://ftp.gnu.org/gnu/binutils/binutils-{ver}.tar.gz to ./src-tar/binutils-{ver}.tar.gz
 BINUTILS_VERSION="2.47"
+BINUTILS_SIGNATURE="e9db8b70b0cba3db43b27e84ccd8a0c0958b40029a1c36c9f13817b93787b4d6"
 
 # Download https://ftp.gnu.org/gnu/gcc/gcc-{ver}/gcc-{ver}.tar.gz to ./tars/gcc-{ver}.tar.gz
 GCC_VERSION="16.2.0"
+GCC_SIGNATURE="071d00a097579e5ef7ce97fc4a9e58e73fd3503c0a013c765c970370a5a53b9b"
 
 # Download https://ftp.gnu.org/gnu/gmp/gmp-{ver}.tar.gz to ./tars/gcc-{ver}.tar.gz
 GMP_VERSION="6.3.0"
+GMP_SIGNATURE="e56fd59d76810932a0555aa15a14b61c16bed66110d3c75cc2ac49ddaa9ab24c"
 
 # Download https://ftp.gnu.org/gnu/mpfr/mpfr-{ver}.tar.gz to ./tars/mpfr-{ver}.tar.gz
 MPFR_VERSION="4.2.2"
+MPFR_SIGNATURE="826cbb24610bd193f36fde172233fb8c009f3f5c2ad99f644d0dea2e16a20e42"
 
 # Download https://ftp.gnu.org/gnu/mpc/mpc-{ver}.tar.xz to ./tars/mpc-{ver}.tar.xz
 MPC_VERSION="1.4.1"
+MPC_SIGNATURE="826cbb24610bd193f36fde172233fb8c009f3f5c2ad99f644d0dea2e16a20e42"
 
 # Download https://github.com/vda-linux/busybox_mirror/archive/refs/tags/{ver}.tar.gz to ./src-tar/musl-{ver}.tar.gz
 BUSYBOX_VERSION="1_36_1"
+BUSYBOX_SIGNATURE="d4955247949cfe8eaa5e2d677fd25efdc22d537830a9db8316940f0860517d06"
 
 DOWNLOAD_CACHE=$(pwd)/.tars
 WORK_DIR=$(pwd)/.build
@@ -357,43 +364,34 @@ case "$START_STEP" in
         rm -rf $WORK_DIR $OUT_DIR $CROSS_DIR
         mkdir -p "$DOWNLOAD_CACHE" "$WORK_DIR" "$OUT_DIR" "$SEED_SYSROOT/bin" "$SEED_SYSROOT/usr/include"
 
-        if [[ ! -f "$DOWNLOAD_CACHE/musl-$MUSL_VERSION.tar.gz" ]]; then
-            echo "Fetching musl from" "https://github.com/kraj/musl/archive/refs/tags/v$MUSL_VERSION.tar.gz"
-            curl -sSL "https://github.com/kraj/musl/archive/refs/tags/v$MUSL_VERSION.tar.gz" -o "$DOWNLOAD_CACHE/musl-$MUSL_VERSION.tar.gz"
-        fi
+        fetch()
+        {
+            local url = "$1"
+            local output = "$2"
+            local signature = "$3"
+            if [[ ! -f "$output" ]]; then
+                echo "Fetching $output from $url"
+                curl -fsSL "$url" -o "$output"
+                local test_signature = "$(sha256sum "$output" | cut -wf1)"
+                if [ ! "$test_signature" -eq "$signature" ]; then
+                    rm $output
+                    echo "Signature fail"
+                    echo "Got: $test_signature"
+                    echo "Expected: $signature"
+                    exit 1
+                fi 
+            fi
+        }
 
-        if [[ ! -f "$DOWNLOAD_CACHE/binutils-$BINUTILS_VERSION.tar.gz" ]]; then
-            echo "Fetching binutils from" "https://ftp.gnu.org/gnu/binutils/binutils-$BINUTILS_VERSION.tar.gz"
-            curl -sSL "https://ftp.gnu.org/gnu/binutils/binutils-$BINUTILS_VERSION.tar.gz" -o "$DOWNLOAD_CACHE/binutils-$BINUTILS_VERSION.tar.gz"
-        fi
-
-        if [[ ! -f "$DOWNLOAD_CACHE/gcc-$GCC_VERSION.tar.gz" ]]; then
-            echo "Fetching gcc from" "https://ftp.gnu.org/gnu/gcc/gcc-$GCC_VERSION/gcc-$GCC_VERSION.tar.gz"
-            curl -sSL "https://ftp.gnu.org/gnu/gcc/gcc-$GCC_VERSION/gcc-$GCC_VERSION.tar.gz" -o "$DOWNLOAD_CACHE/gcc-$GCC_VERSION.tar.gz"
-        fi
-
-        if [[ ! -f "$DOWNLOAD_CACHE/gmp-$GMP_VERSION.tar.gz" ]]; then
-            echo "Fetching gmp from" "https://ftp.gnu.org/gnu/gmp/gmp-$GMP_VERSION.tar.gz"
-            curl -sSL "https://ftp.gnu.org/gnu/gmp/gmp-$GMP_VERSION.tar.gz" -o "$DOWNLOAD_CACHE/gmp-$GMP_VERSION.tar.gz"
-        fi
-
-        if [[ ! -f "$DOWNLOAD_CACHE/mpfr-$MPFR_VERSION.tar.gz" ]]; then
-            echo "Fetching mpfr from" "https://ftp.gnu.org/gnu/mpfr/mpfr-$MPFR_VERSION.tar.gz"
-            curl -sSL "https://ftp.gnu.org/gnu/mpfr/mpfr-$MPFR_VERSION.tar.gz" -o "$DOWNLOAD_CACHE/mpfr-$MPFR_VERSION.tar.gz"
-        fi
-
-        if [[ ! -f "$DOWNLOAD_CACHE/mpc-$MPC_VERSION.tar.xz" ]]; then
-            echo "Fetching mpc from" "https://ftp.gnu.org/gnu/mpc/mpc-$MPC_VERSION.tar.xz"
-            curl -sSL "https://ftp.gnu.org/gnu/mpc/mpc-$MPC_VERSION.tar.xz" -o "$DOWNLOAD_CACHE/mpc-$MPC_VERSION.tar.xz"
-        fi
-
-        if [[ ! -f "$DOWNLOAD_CACHE/busybox-$BUSYBOX_VERSION.tar.gz" ]]; then
-            echo "Fetching busybox from" "https://github.com/vda-linux/busybox_mirror/archive/refs/tags/$BUSYBOX_VERSION.tar.gz"
-            curl -ssL "https://github.com/vda-linux/busybox_mirror/archive/refs/tags/$BUSYBOX_VERSION.tar.gz" -o "$DOWNLOAD_CACHE/busybox-$BUSYBOX_VERSION.tar.gz"
-        fi
+        fetch "https://github.com/kraj/musl/archive/refs/tags/v$MUSL_VERSION.tar.gz" "$DOWNLOAD_CACHE/musl-$MUSL_VERSION.tar.gz" "$MUSL_SIGNATURE"
+        fetch "https://ftp.gnu.org/gnu/binutils/binutils-$BINUTILS_VERSION.tar.gz" "$DOWNLOAD_CACHE/binutils-$BINUTILS_VERSION.tar.gz" "$BINUTILS_SIGNATURE"
+        fetch "https://ftp.gnu.org/gnu/gcc/gcc-$GCC_VERSION/gcc-$GCC_VERSION.tar.gz" "$DOWNLOAD_CACHE/gcc-$GCC_VERSION.tar.gz" "$GCC_SIGNATURE"
+        fetch "https://ftp.gnu.org/gnu/gmp/gmp-$GMP_VERSION.tar.gz" "$DOWNLOAD_CACHE/gmp-$GMP_VERSION.tar.gz" "$GMP_SIGNATURE"
+        fetch "https://ftp.gnu.org/gnu/mpfr/mpfr-$MPFR_VERSION.tar.gz" "$DOWNLOAD_CACHE/mpfr-$MPFR_VERSION.tar.gz" "$MPFR_SIGNATURE"
+        fetch "https://ftp.gnu.org/gnu/mpc/mpc-$MPC_VERSION.tar.xz" "$DOWNLOAD_CACHE/mpc-$MPC_VERSION.tar.xz" "$MPC_SIGNATURE"
+        fetch "https://github.com/vda-linux/busybox_mirror/archive/refs/tags/$BUSYBOX_VERSION.tar.gz" "$DOWNLOAD_CACHE/busybox-$BUSYBOX_VERSION.tar.gz" "$BUSYBOX_SIGNATURE"
 
         echo "All dependencies downloaded"
-
 
         echo "Extracting $DOWNLOAD_CACHE/musl-$MUSL_VERSION.tar.gz"
         tar -xf "$DOWNLOAD_CACHE/musl-$MUSL_VERSION.tar.gz" -C "$WORK_DIR" &&  mv "$WORK_DIR/musl"* "$WORK_DIR/musl-src"
@@ -406,7 +404,6 @@ case "$START_STEP" in
 
         echo "Extracting $DOWNLOAD_CACHE/busybox-$BUSYBOX_VERSION.tar.gz"
         tar -xf "$DOWNLOAD_CACHE/busybox-$BUSYBOX_VERSION.tar.gz" -C "$WORK_DIR" && mv "$WORK_DIR/busybox"* "$WORK_DIR/busybox-src"
-
 
         echo "Extracting $DOWNLOAD_CACHE/gmp-$GMP_VERSION.tar.gz"
         tar -xf "$DOWNLOAD_CACHE/gmp-$GMP_VERSION.tar.gz" -C "$WORK_DIR" && mv "$WORK_DIR/gmp"* "$WORK_DIR/gcc-src/gmp"
