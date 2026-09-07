@@ -236,6 +236,8 @@ build_busybox_target()
 {
     pass2
 
+    cd "$WORK_DIR/busybox-src"
+
     clean
     
     make allnoconfig
