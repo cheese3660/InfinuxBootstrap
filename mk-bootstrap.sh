@@ -121,6 +121,8 @@ build_gcc_cross()
     mkdir -p "$WORK_DIR/gcc-cross" && cd "$WORK_DIR/gcc-cross"
 
     clean
+    
+    export PATH="$CROSS_DIR/bin:$CROSS_DIR/$TARGET/bin:$PATH"
 
     CFLAGS="-Wno-format-security -Wno-error=format-security" \
     CXXFLAGS="-Wno-format-security -Wno-error=format-security" \
@@ -128,6 +130,8 @@ build_gcc_cross()
         --prefix="$CROSS_DIR" \
         --target="$TARGET" \
         --with-sysroot="$CROSS_DIR/$TARGET" \
+        --with-ld="$CROSS_DIR/bin/$TARGET-ld" \
+        --with-as="$CROSS_DIR/bin/$TARGET-as" \
         --disable-bootstrap \
         --disable-multilib \
         --disable-shared \
@@ -304,20 +308,22 @@ build_busybox_target()
     enable_opt "CONFIG_XZ"
     enable_opt "CONFIG_UNXZ"
     enable_opt "CONFIG_PATCH"
+    
+    sed -i "s|CONFIG_EXTRA_CFLAGS=.*|CONFIG_EXTRA_CFLAGS=\"-static -I$SEED_SYSROOT/include\"|" .config
+    sed -i "s|CONFIG_EXTRA_LDFLAGS=.*|CONFIG_EXTRA_LDFLAGS=\"-static -L$SEED_SYSROOT/lib -B$CROSS_DIR/bin\"|" .config
 
     # Resolve dependencies strictly without interactive prompts
     make prepare
-
-    # { yes "" || true; } | make oldconfig
     
+    [ -f "$SEED_SYSROOT/lib/libm.a" ] || ln -sf libc.a "$SEED_SYSROOT/lib/libm.a"
+    [ -f "$CROSS_DIR/$TARGET/lib/libm.a" ] || ln -sf libc.a "$CROSS_DIR/$TARGET/lib/libm.a"
+
     make -j"$(nproc)" \
-        CROSS_COMPILE="$TARGET-" \
-        CC="$TARGET-gcc" \
-        LD="$TARGET-ld" \
+        CC="$TARGET-gcc -B$CROSS_DIR/bin -B$CROSS_DIR/$TARGET/bin" \
         AR="$TARGET-ar" \
         RANLIB="$TARGET-ranlib" \
-        EXTRA_CFLAGS="-static -I$SEED_SYSROOT/include" \
-        EXTRA_LDFLAGS="-static -L$SEED_SYSROOT/lib"
+        CONFIG_EXTRA_CFLAGS="-static -I$SEED_SYSROOT/include -I$CROSS_DIR/$TARGET/include" \
+        CONFIG_EXTRA_LDFLAGS="-static -L$SEED_SYSROOT/lib -L$CROSS_DIR/$TARGET/lib -B$CROSS_DIR/bin -B$CROSS_DIR/$TARGET/bin"
 
     make install CONFIG_PREFIX="$SEED_SYSROOT"
 }
@@ -396,7 +402,7 @@ case "$START_STEP" in
         ;&
 
     "binutils-cross")
-        run_step "musl-cross" build_binutils_cross
+        run_step "binutils-cross" build_binutils_cross
         ;&
 
     "gcc-cross")

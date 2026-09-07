@@ -5,3 +5,5 @@ dist/
 *.log
 test
 logs/
+.temp-chroot/
+.validate/
