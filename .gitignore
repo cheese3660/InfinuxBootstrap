@@ -4,3 +4,4 @@ cross-toolchain/
 dist/
 *.log
 test
+logs/
