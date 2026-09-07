@@ -194,7 +194,7 @@ CXXFLAGS="-Wno-format-security -Wno-error=format-security" \
     --enable-languages=c,c++ \
     LDFLAGS="-static"
 
-make -j"$(nproc)" && DESTDIR="$SEED_SYSROOT"
+make -j"$(nproc)" && make install DESTDIR="$SEED_SYSROOT"
 
 ln -sf gcc "$SEED_SYSROOT/bin/cc"
 
@@ -202,10 +202,34 @@ echo "=> busybox"
 
 cd "$WORK_DIR/busybox-src"
 make defconfig
-sed -i 's/CONFIG_STATIC=n/CONFIG_STATIC=y/' .config
-sed -i 's/CONFIG_TC=y/CONFIG_TC=n/' .config
-sed -i 's/CONFIG_FEATURE_TC_INGRESS=y/CONFIG_FEATURE_TC_INGRESS=n/' .config
-make -j"$(nproc)"
+
+sed -i 's/.*CONFIG_STATIC.*/CONFIG_STATIC=y/' .config
+sed -i 's/.*CONFIG_STATIC_LIBGCC.*/CONFIG_STATIC_LIBGCC=y/' .config
+
+sed -i 's/.*CONFIG_TC.*/CONFIG_TC=n/' .config
+sed -i 's/.*CONFIG_FEATURE_TC_INGRESS.*/CONFIG_FEATURE_TC_INGRESS=n/' .config
+
+ssed -i 's/.*CONFIG_NETSTAT.*/CONFIG_NETSTAT=n/' .config
+sed -i 's/.*CONFIG_FEATURE_IPV6.*/CONFIG_FEATURE_IPV6=n/' .config
+sed -i 's/.*CONFIG_NETWORKING.*/CONFIG_NETWORKING=n/' .config
+sed -i 's/.*CONFIG_CONSOLEUTILS.*/CONFIG_CONSOLEUTILS=n/' .config
+
+sed -i 's/.*CONFIG_MODUTILS.*/CONFIG_MODUTILS=n/' .config
+sed -i 's/.*CONFIG_INIT.*/CONFIG_INIT=n/' .config
+sed -i 's/.*CONFIG_LOGINUTILS.*/CONFIG_LOGINUTILS=n/' .config
+sed -i 's/.*CONFIG_SELINUX.*/CONFIG_SELINUX=n/' .config
+sed -i 's/.*CONFIG_HDPARM.*/CONFIG_HDPARM=n/' .config
+sed -i 's/.*CONFIG_DEVMEM.*/CONFIG_DEVMEM=n/' .config
+
+make olddefconfig
+
+make -j"$(nproc)" \
+    CC="$TARGET-gcc" \
+    AR="$TARGET-ar" \
+    RANLIB="$TARGET-ranlib" \
+    LDFLAGS="-static" \
+    EXTRA_CFLAGS="-static"
+
 make install CONFIG_PREFIX="$SEED_SYSROOT"
 
 echo "=== Phase 3: Packaging ==="
@@ -223,33 +247,22 @@ echo "=> Strip debug symbols"
 "$TARGET-strip" --strip-unneeded libexec/gcc/$TARGET/*/* 2>/dev/null || true
 
 echo "=> Create store manifest and directory structure"
-mkdir -p lib include usr
 
-if [ -d "usr/include" ]; then
-    cp -rn usr/include/* include/ 2>/dev/null || true
-fi;
+mkdir -p lib include
 
+[ -d "usr/include" ] && cp -rn usr/include/* include/ 2>/dev/null || true
+[ -d "usr/lib" ]     && cp -rn usr/lib/* lib/ 2>/dev/null || true
+[ -d "usr/bin" ]     && cp -rn usr/bin/* bin/ 2>/dev/null || true
+[ -d "usr/sbin" ]    && cp -rn usr/sbin/* bin/ 2>/dev/null || true
+[ -d "sbin" ]        && cp -rn sbin/* bin/ 2>/dev/null || true
 
-if [ -d "usr/lib" ]; then
-    cp -rn usr/lib/* lib/ 2>/dev/null || true
-fi;
+# 2. Wipe the old directories completely
+rm -rf sbin usr
 
-# Merge the directories
-for dir in sbin usr/bin usr/sbin; do
-    if [ -d "$dir" ]; then
-        cp -rn "$dir"/* bin/ 2>/dev/null || true
-        rm -rf "$dir"
-    fi
-done
-
-if [ -d "usr/lib" ]; then
-    mkdir -p lib
-    cp -rn usr/lib/* lib/ 2>/dev/null || true
-    rm -rf usr/lib
-fi
-
+# 3. Recreate /usr as a clean directory
 mkdir -p usr
 
+# 4. Create relative symlinks safely
 ln -sf bin sbin
 ln -sf ../bin usr/bin
 ln -sf ../bin usr/sbin
