@@ -44,6 +44,7 @@ SEED_SYSROOT="$WORK_DIR/sysroot"
 TARGET="x86_64-linux-musl"
 
 START_STEP="${1:-setup}"
+FORMAT="${2:-xz}"
 
 mkdir -p $LOG_DIR
 
@@ -124,8 +125,8 @@ build_gcc_cross()
     
     export PATH="$CROSS_DIR/bin:$CROSS_DIR/$TARGET/bin:$PATH"
 
-    CFLAGS="-Wno-format-security -Wno-error=format-security" \
-    CXXFLAGS="-Wno-format-security -Wno-error=format-security" \
+    CFLAGS="-O2 -Wno-format-security -Wno-error=format-security" \
+    CXXFLAGS="-O2 -Wno-format-security -Wno-error=format-security" \
     ../gcc-src/configure \
         --prefix="$CROSS_DIR" \
         --target="$TARGET" \
@@ -171,6 +172,8 @@ build_binutils_target()
 
     clean
 
+    export EXTRA_SIZE_CFLAGS="-Os -fdata-sections -ffunction-sections -fno-unwind-tables -fno-asynchronous-unwind-tables"
+    export EXTRA_SIZE_LDFLAGS="-Wl,--gc-sections"
     ../binutils-src/configure \
         --host="$TARGET" \
         --target="$TARGET" \
@@ -178,10 +181,15 @@ build_binutils_target()
         --bindir="/bin" \
         --libdir="/lib" \
         --enable-targets=x86_64-linux-musl,i686-linux-musl \
+        --disable-gprof \
+        --disable-readline \
+        --disable-sim \
+        --disable-nls \
         --disable-nls \
         --disable-werror \
         --disable-shared \
         --enable-static \
+        --disable-gdb \
         LDFLAGS="-static"
     
     make -j"$(nproc)" \
@@ -202,6 +210,8 @@ build_gcc_target()
 
     clean
 
+    export EXTRA_SIZE_CFLAGS="-Os -fdata-sections -ffunction-sections -fno-unwind-tables -fno-asynchronous-unwind-tables"
+    export EXTRA_SIZE_LDFLAGS="-Wl,--gc-sections"
     CFLAGS="-Wno-format-security -Wno-error=format-security" \
     CXXFLAGS="-Wno-format-security -Wno-error=format-security" \
     ../gcc-src/configure \
@@ -223,6 +233,13 @@ build_gcc_target()
         --disable-libsanitizer \
         --enable-languages=c,c++ \
         --disable-fixincludes \
+        --disable-libgomp \
+        --disable-libquadmath \
+        --disable-libssp \
+        --disable-libvtv \
+        --disable-plugin \
+        --disable-lto \
+        --disable-decimal-float \
         LDFLAGS="-static"
 
     make -j"$(nproc)" \
@@ -309,7 +326,12 @@ build_busybox_target()
     enable_opt "CONFIG_UNXZ"
     enable_opt "CONFIG_PATCH"
     
-    sed -i "s|CONFIG_EXTRA_CFLAGS=.*|CONFIG_EXTRA_CFLAGS=\"-static -I$SEED_SYSROOT/include\"|" .config
+    # Enable native size optimization toggles
+    enable_opt "CONFIG_OPTIMIZE_FOR_SIZE"
+    enable_opt "CONFIG_GC_SECTIONS"
+
+    SIZE_CFLAGS="-Os -fdata-sections -ffunction-sections -fno-unwind-tables -fno-asynchronous-unwind-tables"
+    sed -i "s|CONFIG_EXTRA_CFLAGS=.*|CONFIG_EXTRA_CFLAGS=\"-static -I$SEED_SYSROOT/include $SIZE_CFLAGS\"|" .config
     sed -i "s|CONFIG_EXTRA_LDFLAGS=.*|CONFIG_EXTRA_LDFLAGS=\"-static -L$SEED_SYSROOT/lib -B$CROSS_DIR/bin\"|" .config
 
     # Resolve dependencies strictly without interactive prompts
@@ -490,7 +512,14 @@ case "$START_STEP" in
         rm -f linuxrc
         rm -rf share
 
-        tar --owner=0 --group=0 -czf "$OUT_DIR/bootstrap.tar.gz" -C "$SEED_SYSROOT" .
-
-        echo "== Done: output is at $OUT_DIR/bootstrap.tar.gz ==="
+        case "$FORMAT" in
+            "xz")
+                tar -I 'xz -9e --threads=0' -cf "$OUT_DIR/bootstrap.tar.xz" -C "$SEED_SYSROOT" .
+                echo "== Done: output is at $OUT_DIR/bootstrap.tar.xz ==="
+                ;;
+            "gz")
+                tar --owner=0 --group=0 -czf "$OUT_DIR/bootstrap.tar.gz" -C "$SEED_SYSROOT" .
+                echo "== Done: output is at $OUT_DIR/bootstrap.tar.gz ==="
+                ;;
+        esac
 esac

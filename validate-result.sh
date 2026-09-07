@@ -1,6 +1,15 @@
+#!/usr/bin/env bash
+
+[ -f ./dist/bootstrap.tar.gz ] && file="./dist/bootstrap.tar.gz"
+[ -f ./dist/bootstrap.tar.xz ] && file="./dist/bootstrap.tar.xz"
+if [ -z "$file" ]; then
+    echo "Error: Bootstrap archive not found." >&2
+    exit 1
+fi
+
 rm -rf ./.validate
 mkdir -p ./.validate
-tar  -xzf ./dist/bootstrap.tar.gz -C ./.validate
+tar -xf $file -C ./.validate
 
 WORK_DIR=$(pwd)/.build
 
