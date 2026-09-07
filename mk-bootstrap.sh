@@ -167,6 +167,7 @@ mkdir -p "$WORK_DIR/binutils-target" && cd "$WORK_DIR/binutils-target"
 ../binutils-src/configure \
     --host="$TARGET" \
     --target="$TARGET" \
+    --enable-targets=x86_64-linux-musl,i686-linux-musl \
     --prefix="" \
     --disable-nls \
     --disable-shared \
@@ -186,7 +187,7 @@ CXXFLAGS="-Wno-format-security -Wno-error=format-security" \
     --prefix="" \
     --with-native-system-header-dir="/include" \
     --disable-bootstrap \
-    --disable-multilib \
+    --enable-multilib \
     --disable-shared \
     --enable-static \
     --disable-nls \
@@ -209,7 +210,7 @@ sed -i 's/.*CONFIG_STATIC_LIBGCC.*/CONFIG_STATIC_LIBGCC=y/' .config
 sed -i 's/.*CONFIG_TC.*/CONFIG_TC=n/' .config
 sed -i 's/.*CONFIG_FEATURE_TC_INGRESS.*/CONFIG_FEATURE_TC_INGRESS=n/' .config
 
-ssed -i 's/.*CONFIG_NETSTAT.*/CONFIG_NETSTAT=n/' .config
+sed -i 's/.*CONFIG_NETSTAT.*/CONFIG_NETSTAT=n/' .config
 sed -i 's/.*CONFIG_FEATURE_IPV6.*/CONFIG_FEATURE_IPV6=n/' .config
 sed -i 's/.*CONFIG_NETWORKING.*/CONFIG_NETWORKING=n/' .config
 sed -i 's/.*CONFIG_CONSOLEUTILS.*/CONFIG_CONSOLEUTILS=n/' .config
@@ -250,6 +251,18 @@ echo "=> Create store manifest and directory structure"
 
 mkdir -p lib include
 
+if [ -d "usr/lib32" ]; then
+    mkdir -p lib32
+    cp -rn usr/lib32/* lib32/ 2>/dev/null || true
+    rm -rf usr/lib32
+fi
+
+if [ -d "usr/lib/32" ]; then
+    mkdir -p lib/32
+    cp -rn usr/lib/32/* lib/32/ 2>/dev/null || true
+    rm -rf usr/lib/32
+fi
+
 [ -d "usr/include" ] && cp -rn usr/include/* include/ 2>/dev/null || true
 [ -d "usr/lib" ]     && cp -rn usr/lib/* lib/ 2>/dev/null || true
 [ -d "usr/bin" ]     && cp -rn usr/bin/* bin/ 2>/dev/null || true
@@ -269,10 +282,18 @@ ln -sf ../bin usr/sbin
 ln -sf ../include usr/include
 ln -sf ../lib usr/lib
 
+
 if [ -d "x86_64-linux-musl" ]; then
     [ -d "x86_64-linux-musl/include" ] && cp -rn x86_64-linux-musl/include/* include/ 2>/dev/null || true
     [ -d "x86_64-linux-musl/lib" ] && cp -rn x86_64-linux-musl/lib/* lib/ 2>/dev/null || true
     rm -rf x86_64-linux-musl
+fi
+
+if [ -d "lib32" ]; then
+    ln -sf ../lib32 usr/lib32
+elif [ -d "lib/32" ]; then
+    mkdir -p usr/lib
+    ln -sf ../../lib/32 usr/lib/32
 fi
 
 rm -f linuxrc
