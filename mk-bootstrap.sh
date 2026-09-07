@@ -62,6 +62,264 @@ pass2() {
     export PASS2_SETUP="done"
 }
 
+run_step() {
+    local step_name="$1"
+    local log_file="$LOG_DIR/${step_name}.log"
+    shift 1
+    echo "=> Building ${step_name}..."
+
+    set +e
+    (
+        set -e
+        "$@"
+    ) &> "$log_file"
+    local status=$?
+    set -e
+
+    if [ $status -eq 0 ]; then
+        echo "=> ${step_name} built successfully."
+    else
+        echo "=> ERROR: ${step_name} build failed!"
+        echo "=> Last 20 lines of ${log_file}:"
+        tail -n 20 "$log_file"
+        exit 1
+    fi
+}
+
+build_musl_cross()
+{
+    cd "$WORK_DIR/musl-src"
+    rm -f config.mak && make clean
+
+    ./configure --prefix="$CROSS_DIR/$TARGET" --libdir="$CROSS_DIR/$TARGET/lib" --disable-shared
+    make -j"$(nproc)" && make install
+
+    mkdir -p "$CROSS_DIR/$TARGET/usr"
+    ln -sf "../include" "$CROSS_DIR/$TARGET/usr/include"
+    ln -sf "../lib" "$CROSS_DIR/$TARGET/usr/lib"
+}
+
+build_binutils_cross()
+{
+    mkdir -p "$WORK_DIR/binutils-cross" && cd "$WORK_DIR/binutils-cross"
+    
+    clean
+
+    ../binutils-src/configure \
+        --prefix="$CROSS_DIR" \
+        --target="$TARGET" \
+        --with-sysroot="$CROSS_DIR/$TARGET" \
+        --disable-nls \
+        --disable-werror
+
+    make -j"$(nproc)" && make install
+}
+
+build_gcc_cross()
+{
+
+    mkdir -p "$WORK_DIR/gcc-cross" && cd "$WORK_DIR/gcc-cross"
+
+    clean
+
+    CFLAGS="-Wno-format-security -Wno-error=format-security" \
+    CXXFLAGS="-Wno-format-security -Wno-error=format-security" \
+    ../gcc-src/configure \
+        --prefix="$CROSS_DIR" \
+        --target="$TARGET" \
+        --with-sysroot="$CROSS_DIR/$TARGET" \
+        --disable-bootstrap \
+        --disable-multilib \
+        --disable-shared \
+        --disable-nls \
+        --disable-libsanitizer \
+        --disable-werror \
+        --enable-languages=c,c++
+
+    make -j"$(nproc)" && make install
+}
+
+build_musl_target()
+{
+    pass2
+
+    cd "$WORK_DIR/musl-src"
+    
+    rm -f config.mak && make clean
+    ./configure --prefix="$SEED_SYSROOT" --libdir="$SEED_SYSROOT/lib" --disable-shared --enable-static
+    make -j"$(nproc)" && make install
+
+    
+    cp -a "$SEED_SYSROOT/include/"* "$CROSS_DIR/$TARGET/include/"
+    cp -a "$SEED_SYSROOT/lib/"* "$CROSS_DIR/$TARGET/lib/"
+
+    for lib in libm libpthread librt libdl libcrypt libresolv libutil; do
+        ln -sf libc.a "$SEED_SYSROOT/lib/${lib}.a" 2>/dev/null || true
+        ln -sf libc.a "$CROSS_DIR/$TARGET/lib/${lib}.a" 2>/dev/null || true
+    done
+}
+
+build_binutils_target()
+{
+    pass2
+
+    mkdir -p "$WORK_DIR/binutils-target" && cd "$WORK_DIR/binutils-target"
+
+    clean
+
+    ../binutils-src/configure \
+        --host="$TARGET" \
+        --target="$TARGET" \
+        --prefix="" \
+        --bindir="/bin" \
+        --libdir="/lib" \
+        --enable-targets=x86_64-linux-musl,i686-linux-musl \
+        --disable-nls \
+        --disable-werror \
+        --disable-shared \
+        --enable-static \
+        LDFLAGS="-static"
+    
+    make -j"$(nproc)" \
+        CC="$TARGET-gcc -B$CROSS_DIR/bin -B$CROSS_DIR/$TARGET/bin" \
+        AR="$TARGET-ar" \
+        RANLIB="$TARGET-ranlib" \
+        LDFLAGS="-static" \
+        EXTRA_CFLAGS="-static"
+
+    make install DESTDIR="$SEED_SYSROOT"
+}
+
+build_gcc_target()
+{
+    pass2
+
+    mkdir -p "$WORK_DIR/gcc-target" && cd "$WORK_DIR/gcc-target"
+
+    clean
+
+    CFLAGS="-Wno-format-security -Wno-error=format-security" \
+    CXXFLAGS="-Wno-format-security -Wno-error=format-security" \
+    ../gcc-src/configure \
+        --host="$TARGET" \
+        --target="$TARGET" \
+        --prefix="" \
+        --exec-prefix="" \
+        --bindir="/bin" \
+        --libdir="/lib" \
+        --libexecdir="/libexec" \
+        --with-build-sysroot="$SEED_SYSROOT" \
+        --with-native-system-header-dir="/include" \
+        --with-gxx-include-dir="/include/c++" \
+        --disable-bootstrap \
+        --disable-multilib \
+        --disable-shared \
+        --enable-static \
+        --disable-nls \
+        --disable-libsanitizer \
+        --enable-languages=c,c++ \
+        --disable-fixincludes \
+        LDFLAGS="-static"
+
+    make -j"$(nproc)" \
+        CC="$TARGET-gcc -B$CROSS_DIR/bin -B$CROSS_DIR/$TARGET/bin" \
+        AR="$TARGET-ar" \
+        RANLIB="$TARGET-ranlib" \
+        EXTRA_CFLAGS="-static"
+    
+    make install DESTDIR="$SEED_SYSROOT"
+
+    ln -sf gcc "$SEED_SYSROOT/bin/cc"
+}
+
+build_busybox_target()
+{
+    pass2
+
+    clean
+    
+    make allnoconfig
+
+    enable_opt() {
+        local opt="$1"
+        if grep -q "^# $opt is not set" .config; then
+            sed -i "s/^# $opt is not set/$opt=y/" .config
+        elif ! grep -q "^$opt=y" .config; then
+            echo "$opt=y" >> .config
+        fi
+    }
+
+    # Enable static binary output
+    enable_opt "CONFIG_STATIC"
+    enable_opt "CONFIG_STATIC_LIBGCC"
+
+    # Shell
+    enable_opt "CONFIG_SHELL_ASH"
+    enable_opt "CONFIG_ASH"
+    enable_opt "CONFIG_SH_IS_ASH"
+    enable_opt "CONFIG_BASH_IS_NONE"
+
+    # Core POSIX Utilities
+    enable_opt "CONFIG_CAT"
+    enable_opt "CONFIG_CHMOD"
+    enable_opt "CONFIG_CP"
+    enable_opt "CONFIG_DD"
+    enable_opt "CONFIG_ECHO"
+    enable_opt "CONFIG_ENV"
+    enable_opt "CONFIG_INSTALL"
+    enable_opt "CONFIG_LN"
+    enable_opt "CONFIG_LS"
+    enable_opt "CONFIG_MKDIR"
+    enable_opt "CONFIG_MV"
+    enable_opt "CONFIG_RM"
+    enable_opt "CONFIG_TOUCH"
+    enable_opt "CONFIG_TEST"
+    enable_opt "CONFIG_TRUE"
+    enable_opt "CONFIG_FALSE"
+    enable_opt "CONFIG_UNAME"
+    enable_opt "CONFIG_WC"
+    enable_opt "CONFIG_XARGS"
+
+    # Text Manipulation & Editing
+    enable_opt "CONFIG_AWK"
+    enable_opt "CONFIG_CUT"
+    enable_opt "CONFIG_GREP"
+    enable_opt "CONFIG_EGREP"
+    enable_opt "CONFIG_FGREP"
+    enable_opt "CONFIG_HEAD"
+    enable_opt "CONFIG_SED"
+    enable_opt "CONFIG_SORT"
+    enable_opt "CONFIG_TAIL"
+    enable_opt "CONFIG_TR"
+    enable_opt "CONFIG_UNIQ"
+
+    # Archiving & Compression
+    enable_opt "CONFIG_TAR"
+    enable_opt "CONFIG_GZIP"
+    enable_opt "CONFIG_GUNZIP"
+    enable_opt "CONFIG_BZIP2"
+    enable_opt "CONFIG_BUNZIP2"
+    enable_opt "CONFIG_XZ"
+    enable_opt "CONFIG_UNXZ"
+    enable_opt "CONFIG_PATCH"
+
+    # Resolve dependencies strictly without interactive prompts
+    make prepare
+
+    # { yes "" || true; } | make oldconfig
+    
+    make -j"$(nproc)" \
+        CROSS_COMPILE="$TARGET-" \
+        CC="$TARGET-gcc" \
+        LD="$TARGET-ld" \
+        AR="$TARGET-ar" \
+        RANLIB="$TARGET-ranlib" \
+        EXTRA_CFLAGS="-static -I$SEED_SYSROOT/include" \
+        EXTRA_LDFLAGS="-static -L$SEED_SYSROOT/lib"
+
+    make install CONFIG_PREFIX="$SEED_SYSROOT"
+}
+
 echo "=> Starting build pipeline at step: ${START_STEP}"
 case "$START_STEP" in
     "setup")
@@ -132,312 +390,31 @@ case "$START_STEP" in
         ;&
 
     "musl-cross")
-        echo "=> [1/7] Building musl-cross..."
-
-        {
-            cd "$WORK_DIR/musl-src"
-            rm -f config.mak && make clean
-
-            ./configure --prefix="$CROSS_DIR/$TARGET" --libdir="$CROSS_DIR/$TARGET/lib" --disable-shared
-            make -j"$(nproc)" && make install
-
-            mkdir -p "$CROSS_DIR/$TARGET/usr"
-            ln -sf "../include" "$CROSS_DIR/$TARGET/usr/include"
-            ln -sf "../lib" "$CROSS_DIR/$TARGET/usr/lib"
-        } &> "$LOG_DIR/musl-cross.log"
-        
-        if [ $? -eq 0 ]; then
-            echo "=> [1/7] musl-cross built successfully."
-        else
-            echo "=> ERROR: [1/7] musl-cross build failed!"
-            echo "=> Last 20 lines of $LOG_DIR/musl-cross.log:"
-            tail -n 20 "$LOG_DIR/musl-cross.log"
-            exit 1
-        fi
-
+        run_step "musl-cross" build_musl_cross
         ;&
 
     "binutils-cross")
-        echo "=> [2/7] Building binutils-cross..."
-
-        {
-            mkdir -p "$WORK_DIR/binutils-cross" && cd "$WORK_DIR/binutils-cross"
-            
-            clean
-
-            ../binutils-src/configure \
-                --prefix="$CROSS_DIR" \
-                --target="$TARGET" \
-                --with-sysroot="$CROSS_DIR/$TARGET" \
-                --disable-nls \
-                --disable-werror
-
-            make -j"$(nproc)" && make install
-        } &> "$LOG_DIR/binutils-cross.log"
-        
-        if [ $? -eq 0 ]; then
-            echo "=> [2/7] binutils-cross built successfully."
-        else
-            echo "=> ERROR: [2/7] binutils-cross build failed!"
-            echo "=> Last 20 lines of $LOG_DIR/binutils-cross.log:"
-            tail -n 20 "$LOG_DIR/binutils-cross.log"
-            exit 1
-        fi
-
+        run_step "musl-cross" build_binutils_cross
         ;&
 
     "gcc-cross")
-        echo "=> [3/7] Building gcc-cross..."
-
-        {
-            mkdir -p "$WORK_DIR/gcc-cross" && cd "$WORK_DIR/gcc-cross"
-
-            clean
-
-            CFLAGS="-Wno-format-security -Wno-error=format-security" \
-            CXXFLAGS="-Wno-format-security -Wno-error=format-security" \
-            ../gcc-src/configure \
-                --prefix="$CROSS_DIR" \
-                --target="$TARGET" \
-                --with-sysroot="$CROSS_DIR/$TARGET" \
-                --disable-bootstrap \
-                --disable-multilib \
-                --disable-shared \
-                --disable-nls \
-                --disable-libsanitizer \
-                --disable-werror \
-                --enable-languages=c,c++
-
-            make -j"$(nproc)" && make install
-        } &> "$LOG_DIR/gcc-cross.log"
-        
-        if [ $? -eq 0 ]; then
-            echo "=> [3/7] gcc-cross built successfully."
-        else
-            echo "=> ERROR: [3/7] gcc-cross build failed!"
-            echo "=> Last 20 lines of $LOG_DIR/gcc-cross.log:"
-            tail -n 20 "$LOG_DIR/gcc-cross.log"
-            exit 1
-        fi
-
+        run_step "gcc-cross" build_gcc_cross
         ;&
     
     "musl-target")
-        echo "=> [4/7] Building musl-target..."
-
-        pass2
-
-        {
-            cd "$WORK_DIR/musl-src"
-            
-            rm -f config.mak && make clean
-            ./configure --prefix="$SEED_SYSROOT" --libdir="$SEED_SYSROOT/lib" --disable-shared --enable-static
-            make -j"$(nproc)" && make install
-
-        } &> "$LOG_DIR/musl-target.log"
-
-        if [ $? -eq 0 ]; then
-            echo "=> [4/7] musl-target built successfully."
-        else
-            echo "=> ERROR: [4/7] musl-target build failed!"
-            echo "=> Last 20 lines of $LOG_DIR/musl-target.log:"
-            tail -n 20 "$LOG_DIR/musl-target.log"
-            exit 1
-        fi
-
+        run_step "musl-target" build_musl_target
         ;&
 
     "binutils-target")
-        echo "=> [5/7] Building binutils-target"
-
-        pass2
-        {
-            mkdir -p "$WORK_DIR/binutils-target" && cd "$WORK_DIR/binutils-target"
-
-            clean
-
-            ../binutils-src/configure \
-                --host="$TARGET" \
-                --target="$TARGET" \
-                --prefix="" \
-                --bindir="/bin" \
-                --libdir="/lib" \
-                --enable-targets=x86_64-linux-musl,i686-linux-musl \
-                --disable-nls \
-                --disable-werror \
-                --disable-shared \
-                --enable-static \
-                LDFLAGS="-static"
-            
-            make -j"$(nproc)" \
-                CC="$TARGET-gcc -B$CROSS_DIR/bin -B$CROSS_DIR/$TARGET/bin" \
-                AR="$TARGET-ar" \
-                RANLIB="$TARGET-ranlib" \
-                LDFLAGS="-static" \
-                EXTRA_CFLAGS="-static"
-
-            make install DESTDIR="$SEED_SYSROOT"
-        } &> "$LOG_DIR/binutils-target.log" 
-        if [ $? -eq 0 ]; then
-            echo "=> [5/7] binutils-target built successfully."
-        else
-            echo "=> ERROR: [5/7] binutils-target build failed!"
-            echo "=> Last 20 lines of $LOG_DIR/binutils-target.log:"
-            tail -n 20 "$LOG_DIR/binutils-target.log"
-            exit 1
-        fi
+        run_step "binutils-target" build_binutils_target
         ;&
 
     "gcc-target")
-        echo "=> [6/7] Building gcc-target"
-        
-        pass2
-        {
-            mkdir -p "$WORK_DIR/gcc-target" && cd "$WORK_DIR/gcc-target"
-
-            clean
-
-            CFLAGS="-Wno-format-security -Wno-error=format-security" \
-            CXXFLAGS="-Wno-format-security -Wno-error=format-security" \
-            ../gcc-src/configure \
-                --host="$TARGET" \
-                --target="$TARGET" \
-                --prefix="" \
-                --exec-prefix="" \
-                --bindir="/bin" \
-                --libdir="/lib" \
-                --libexecdir="/libexec" \
-                --with-native-system-header-dir="$SEED_SYSROOT/include" \
-                --with-gxx-include-dir="/include/c++" \
-                --disable-bootstrap \
-                --disable-multilib \
-                --disable-shared \
-                --enable-static \
-                --disable-nls \
-                --disable-libsanitizer \
-                --enable-languages=c,c++ \
-                --disable-fixincludes \
-                LDFLAGS="-static"
-
-            make -j"$(nproc)" \
-                CC="$TARGET-gcc -B$CROSS_DIR/bin -B$CROSS_DIR/$TARGET/bin" \
-                AR="$TARGET-ar" \
-                RANLIB="$TARGET-ranlib" \
-                LDFLAGS="-static" \
-                EXTRA_CFLAGS="-static"
-            
-            make install DESTDIR="$SEED_SYSROOT"
-
-            ln -sf gcc "$SEED_SYSROOT/bin/cc"
-        } &> "$LOG_DIR/gcc-target.log"
-        
-        if [ $? -eq 0 ]; then
-            echo "=> [6/7] gcc-target built successfully."
-        else
-            echo "=> ERROR: [6/7] gcc-target build failed!"
-            echo "=> Last 20 lines of $LOG_DIR/gcc-target.log:"
-            tail -n 20 "$LOG_DIR/gcc-target.log"
-            exit 1
-        fi
-
+        run_step "gcc-target" build_gcc_target
         ;&
 
     "busybox-target")
-        echo "=> [7/7] Building busybox-target"
-        
-        pass2
-
-        cd "$WORK_DIR/busybox-src"
-        {
-            clean
-            
-            make allnoconfig
-
-            enable_opt() {
-                local opt="$1"
-                if grep -q "^# $opt is not set" .config; then
-                    sed -i "s/^# $opt is not set/$opt=y/" .config
-                elif ! grep -q "^$opt=y" .config; then
-                    echo "$opt=y" >> .config
-                fi
-            }
-
-            # Enable static binary output
-            enable_opt "CONFIG_STATIC"
-            enable_opt "CONFIG_STATIC_LIBGCC"
-
-            # Shell
-            enable_opt "CONFIG_SHELL_ASH"
-            enable_opt "CONFIG_ASH"
-            enable_opt "CONFIG_SH_IS_ASH"
-            enable_opt "CONFIG_BASH_IS_NONE"
-
-            # Core POSIX Utilities
-            enable_opt "CONFIG_CAT"
-            enable_opt "CONFIG_CHMOD"
-            enable_opt "CONFIG_CP"
-            enable_opt "CONFIG_DD"
-            enable_opt "CONFIG_ECHO"
-            enable_opt "CONFIG_ENV"
-            enable_opt "CONFIG_INSTALL"
-            enable_opt "CONFIG_LN"
-            enable_opt "CONFIG_LS"
-            enable_opt "CONFIG_MKDIR"
-            enable_opt "CONFIG_MV"
-            enable_opt "CONFIG_RM"
-            enable_opt "CONFIG_TOUCH"
-            enable_opt "CONFIG_TEST"
-            enable_opt "CONFIG_TRUE"
-            enable_opt "CONFIG_FALSE"
-            enable_opt "CONFIG_UNAME"
-            enable_opt "CONFIG_WC"
-            enable_opt "CONFIG_XARGS"
-
-            # Text Manipulation & Editing
-            enable_opt "CONFIG_AWK"
-            enable_opt "CONFIG_CUT"
-            enable_opt "CONFIG_GREP"
-            enable_opt "CONFIG_EGREP"
-            enable_opt "CONFIG_FGREP"
-            enable_opt "CONFIG_HEAD"
-            enable_opt "CONFIG_SED"
-            enable_opt "CONFIG_SORT"
-            enable_opt "CONFIG_TAIL"
-            enable_opt "CONFIG_TR"
-            enable_opt "CONFIG_UNIQ"
-
-            # Archiving & Compression
-            enable_opt "CONFIG_TAR"
-            enable_opt "CONFIG_GZIP"
-            enable_opt "CONFIG_GUNZIP"
-            enable_opt "CONFIG_BZIP2"
-            enable_opt "CONFIG_BUNZIP2"
-            enable_opt "CONFIG_XZ"
-            enable_opt "CONFIG_UNXZ"
-            enable_opt "CONFIG_PATCH"
-
-            # Resolve dependencies strictly without interactive prompts
-            make prepare
-
-            # { yes "" || true; } | make oldconfig
-            
-            make -j"$(nproc)" \
-                CC="$TARGET-gcc -B$CROSS_DIR/bin -B$CROSS_DIR/$TARGET/bin" \
-                AR="$TARGET-ar" \
-                RANLIB="$TARGET-ranlib" \
-                LDFLAGS="-static" \
-                EXTRA_CFLAGS="-static"
-
-            make install CONFIG_PREFIX="$SEED_SYSROOT"
-        } &> "$LOG_DIR/busybox-target.log"
-        if [ $? -eq 0 ]; then
-            echo "=> [7/7] busybox-target built successfully."
-        else
-            echo "=> ERROR: [7/7] busybox-target build failed!"
-            echo "=> Last 20 lines of $LOG_DIR/busybox-target.log:"
-            tail -n 20 "$LOG_DIR/busybox-target.log"
-            exit 1
-        fi
+        run_step "busybox-target" build_busybox_target
         ;&
 
     "package")
