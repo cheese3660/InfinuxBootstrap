@@ -233,7 +233,7 @@ case "$START_STEP" in
             rm -f config.mak && make clean
             ./configure --prefix="$SEED_SYSROOT" --libdir="$SEED_SYSROOT/lib" --disable-shared --enable-static
             make -j"$(nproc)" && make install
-            
+
         } &> "$LOG_DIR/musl-target.log"
 
         if [ $? -eq 0 ]; then
@@ -310,7 +310,7 @@ case "$START_STEP" in
                 --with-native-system-header-dir="$SEED_SYSROOT/include" \
                 --with-gxx-include-dir="/include/c++" \
                 --disable-bootstrap \
-                --enable-multilib \
+                --disable-multilib \
                 --disable-shared \
                 --enable-static \
                 --disable-nls \
