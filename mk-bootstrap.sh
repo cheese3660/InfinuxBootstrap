@@ -334,6 +334,10 @@ build_busybox_target()
     enable_opt "CONFIG_PATCH"
     enable_opt "CONFIG_FEATURE_TAR_AUTODETECT"
     enable_opt "CONFIG_FEATURE_TAR_LONG_OPTIONS"
+    enable_opt "CONFIG_FEATURE_TAR_SEAMLESS_XZ"
+    enable_opt "CONFIG_FEATURE_TAR_SEAMLESS_GZ"
+    enable_opt "CONFIG_FEATURE_TAR_SEAMLESS_BZ2"
+    enable_opt "CONFIG_FEATURE_TAR_SEAMLESS_LZMA"
     
     # Enable native size optimization toggles
     enable_opt "CONFIG_OPTIMIZE_FOR_SIZE"
