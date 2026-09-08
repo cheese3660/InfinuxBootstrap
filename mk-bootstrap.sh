@@ -506,6 +506,13 @@ case "$START_STEP" in
             ln -sf ../../lib/32 usr/lib/32
         fi
 
+        # Fix broken symlinks due to our merging
+        for link in bin/*; do
+            if [ -L "$link" ] && [ ! -e "$link" ]; then
+                ln -sf busybox "$link";
+            fi
+        done
+
         rm -f linuxrc
         rm -rf share
 
