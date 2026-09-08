@@ -332,6 +332,8 @@ build_busybox_target()
     enable_opt "CONFIG_XZ"
     enable_opt "CONFIG_UNXZ"
     enable_opt "CONFIG_PATCH"
+    enable_opt "CONFIG_FEATURE_TAR_AUTODETECT"
+    enable_opt "CONFIG_FEATURE_TAR_LONG_OPTIONS"
     
     # Enable native size optimization toggles
     enable_opt "CONFIG_OPTIMIZE_FOR_SIZE"
