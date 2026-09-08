@@ -289,6 +289,10 @@ build_busybox_target()
     enable_opt "CONFIG_SH_IS_ASH"
     enable_opt "CONFIG_BASH_IS_NONE"
 
+    # Core configurations
+    enable_opt "CONFIG_LONG_OPTS"
+    enable_opt "CONFIG_SHOW_USAGE"
+
     # Core POSIX Utilities
     enable_opt "CONFIG_CAT"
     enable_opt "CONFIG_CHMOD"
@@ -332,12 +336,16 @@ build_busybox_target()
     enable_opt "CONFIG_XZ"
     enable_opt "CONFIG_UNXZ"
     enable_opt "CONFIG_PATCH"
+
+    # TAR Features
+    enable_opt "CONFIG_FEATURE_TAR_CREATE"
+    enable_opt "CONFIG_FEATURE_TAR_FROM"
     enable_opt "CONFIG_FEATURE_TAR_AUTODETECT"
     enable_opt "CONFIG_FEATURE_TAR_LONG_OPTIONS"
-    enable_opt "CONFIG_FEATURE_TAR_SEAMLESS_XZ"
-    enable_opt "CONFIG_FEATURE_TAR_SEAMLESS_GZ"
-    enable_opt "CONFIG_FEATURE_TAR_SEAMLESS_BZ2"
-    enable_opt "CONFIG_FEATURE_TAR_SEAMLESS_LZMA"
+    enable_opt "CONFIG_FEATURE_SEAMLESS_XZ"
+    enable_opt "CONFIG_FEATURE_SEAMLESS_GZ"
+    enable_opt "CONFIG_FEATURE_SEAMLESS_BZ2"
+    enable_opt "CONFIG_FEATURE_SEAMLESS_LZMA"
     
     # Enable native size optimization toggles
     enable_opt "CONFIG_OPTIMIZE_FOR_SIZE"
@@ -347,7 +355,7 @@ build_busybox_target()
     sed -i "s|CONFIG_EXTRA_CFLAGS=.*|CONFIG_EXTRA_CFLAGS=\"-static -I$SEED_SYSROOT/include $SIZE_CFLAGS\"|" .config
     sed -i "s|CONFIG_EXTRA_LDFLAGS=.*|CONFIG_EXTRA_LDFLAGS=\"-static -L$SEED_SYSROOT/lib -B$CROSS_DIR/bin\"|" .config
 
-    # Resolve dependencies strictly without interactive prompts
+
     make prepare
     
     [ -f "$SEED_SYSROOT/lib/libm.a" ] || ln -sf libc.a "$SEED_SYSROOT/lib/libm.a"
