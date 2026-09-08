@@ -327,6 +327,44 @@ build_busybox_target()
     enable_opt "CONFIG_TR"
     enable_opt "CONFIG_UNIQ"
 
+    # LS Features
+    enable_opt "CONFIG_FEATURE_LS_FILETYPES"
+    enable_opt "CONFIG_FEATURE_LS_FOLLOWLINKS"
+    enable_opt "CONFIG_FEATURE_LS_RECURSIVE"
+    enable_opt "CONFIG_FEATURE_LS_SORTFILES"
+    enable_opt "CONFIG_FEATURE_LS_TIMESTAMPS"
+    enable_opt "CONFIG_FEATURE_LS_USERNAME"
+
+    # Core Utility Features
+    enable_opt "CONFIG_FEATURE_DD_SIGNAL_HANDLING"
+    enable_opt "CONFIG_FEATURE_DD_IBS_OBS"
+    enable_opt "CONFIG_FEATURE_DD_STATUS"
+    enable_opt "CONFIG_FEATURE_FANCY_ECHO"
+    enable_opt "CONFIG_FEATURE_PRESERVE_HARDLINKS"
+    enable_opt "CONFIG_FEATURE_VERBOSE"
+    enable_opt "CONFIG_FEATURE_HUMAN_READABLE"
+    enable_opt "CONFIG_FEATURE_TEST_64"
+    enable_opt "CONFIG_FEATURE_WC_LARGE"
+
+    # XARGS Features
+    enable_opt "CONFIG_FEATURE_XARGS_SUPPORT_CONFIRMATION"
+    enable_opt "CONFIG_FEATURE_XARGS_SUPPORT_QUOTES"
+    enable_opt "CONFIG_FEATURE_XARGS_SUPPORT_TERMOPT"
+    enable_opt "CONFIG_FEATURE_XARGS_SUPPORT_ZERO_TERM"
+    enable_opt "CONFIG_FEATURE_XARGS_SUPPORT_REPL_STR"
+    enable_opt "CONFIG_FEATURE_XARGS_SUPPORT_PARALLEL"
+    enable_opt "CONFIG_FEATURE_XARGS_SUPPORT_ARGS_FILE"
+
+    # Text Processing Features
+    enable_opt "CONFIG_FEATURE_GREP_CONTEXT"
+    enable_opt "CONFIG_FEATURE_FANCY_HEAD"
+    enable_opt "CONFIG_FEATURE_FANCY_TAIL"
+    enable_opt "CONFIG_FEATURE_SORT_BIG"
+    enable_opt "CONFIG_FEATURE_TR_CLASSES"
+    enable_opt "CONFIG_FEATURE_TR_EQUIV"
+    enable_opt "CONFIG_FEATURE_CUT_REGEX"
+    enable_opt "CONFIG_FEATURE_AWK_GNU_EXTENSIONS"
+
     # Archiving & Compression
     enable_opt "CONFIG_TAR"
     enable_opt "CONFIG_GZIP"
@@ -342,10 +380,16 @@ build_busybox_target()
     enable_opt "CONFIG_FEATURE_TAR_FROM"
     enable_opt "CONFIG_FEATURE_TAR_AUTODETECT"
     enable_opt "CONFIG_FEATURE_TAR_LONG_OPTIONS"
+    enable_opt "CONFIG_FEATURE_TAR_GNU_EXTENSIONS"
+    enable_opt "CONFIG_FEATURE_TAR_OLDGNU_COMPATIBILITY"
+    enable_opt "CONFIG_FEATURE_TAR_UNAME_GNAME"
+    enable_opt "CONFIG_FEATURE_TAR_NOPRESERVE_TIME"
+    enable_opt "CONFIG_FEATURE_TAR_TO_COMMAND"
     enable_opt "CONFIG_FEATURE_SEAMLESS_XZ"
     enable_opt "CONFIG_FEATURE_SEAMLESS_GZ"
     enable_opt "CONFIG_FEATURE_SEAMLESS_BZ2"
     enable_opt "CONFIG_FEATURE_SEAMLESS_LZMA"
+    enable_opt "CONFIG_FEATURE_SEAMLESS_Z"
     
     # Enable native size optimization toggles
     enable_opt "CONFIG_OPTIMIZE_FOR_SIZE"
