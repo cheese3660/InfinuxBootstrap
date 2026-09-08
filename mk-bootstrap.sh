@@ -289,6 +289,10 @@ build_busybox_target()
     enable_opt "CONFIG_SH_IS_ASH"
     enable_opt "CONFIG_BASH_IS_NONE"
 
+    # Shell math support ($(()))
+    enable_opt "CONFIG_FEATURE_SH_MATH"
+    enable_opt "CONFIG_FEATURE_SH_MATH_64"
+
     # Core configurations
     enable_opt "CONFIG_LONG_OPTS"
     enable_opt "CONFIG_SHOW_USAGE"
@@ -423,10 +427,13 @@ build_busybox_target()
     enable_opt "CONFIG_FEATURE_FIND_PERM"
     enable_opt "CONFIG_FEATURE_FIND_MTIME"
     enable_opt "CONFIG_FEATURE_FIND_EXEC"
+    enable_opt "CONFIG_FEATURE_FIND_EXEC_PLUS"
     enable_opt "CONFIG_FEATURE_FIND_MAXDEPTH"
     enable_opt "CONFIG_FEATURE_FIND_PRINT0"
     enable_opt "CONFIG_FEATURE_FIND_DEPTH"
     enable_opt "CONFIG_FEATURE_FIND_SIZE"
+    enable_opt "CONFIG_FEATURE_FIND_NOT"
+    enable_opt "CONFIG_FEATURE_FIND_PAREN"
 
     # System & Networking
     enable_opt "CONFIG_GETOPT"
